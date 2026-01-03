@@ -1,0 +1,148 @@
+/* 1. Global Reset & Dark Theme */
+:root {
+    --primary: #00f2ff; /* Cyber Blue */
+    --danger: #ff0055;  /* Warning Red */
+    --bg: #0a0b10;
+    --glass: rgba(255, 255, 255, 0.05);
+}
+
+body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: white;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    overflow: hidden; /* Fixes mobile scroll bounce */
+}
+
+/* 2. Layout Shell */
+.app-shell {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+}
+
+/* 3. Glassmorphism Sidebar */
+.sidebar {
+    width: 80px;
+    background: rgba(15, 16, 22, 0.8);
+    backdrop-filter: blur(10px);
+    border-right: 1px solid rgba(255, 255, 255, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 0;
+    z-index: 10;
+}
+
+.logo { font-size: 24px; color: var(--primary); margin-bottom: 40px; }
+.nav-item { 
+    background: none; border: none; color: #555; 
+    font-size: 20px; margin: 20px 0; cursor: pointer; transition: 0.3s;
+}
+.nav-item.active { color: var(--primary); text-shadow: 0 0 10px var(--primary); }
+
+/* 4. Main Viewport & AI Overlay */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+}
+
+.viewport-section {
+    flex: 1;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: radial-gradient(circle, #1a1c25 0%, #0a0b10 100%);
+}
+
+.canvas-container {
+    position: relative;
+    max-width: 100%;
+    max-height: 80vh;
+    box-shadow: 0 0 50px rgba(0,0,0,0.5);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+/* Important: Canvas must match video aspect ratio */
+#overlay {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    z-index: 5;
+}
+
+/* 5. Scanning Animation */
+.scan-grid {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(rgba(0, 242, 255, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 242, 255, 0.05) 1px, transparent 1px);
+    background-size: 30px 30px;
+    pointer-events: none;
+}
+
+#scanner-line {
+    position: absolute;
+    top: 0; left: 0; width: 100%; height: 4px;
+    background: var(--primary);
+    box-shadow: 0 0 20px var(--primary);
+    animation: scanMove 4s ease-in-out infinite;
+    z-index: 6;
+}
+
+@keyframes scanMove {
+    0% { top: 0%; opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { top: 100%; opacity: 0; }
+}
+
+/* 6. Buttons & Glass Controls */
+.action-bar {
+    height: 100px;
+    background: var(--glass);
+    backdrop-filter: blur(15px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 20px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.btn-primary, .btn-secondary, .btn-success {
+    padding: 12px 24px;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.2);
+    cursor: pointer;
+    font-weight: 600;
+    transition: 0.3s;
+    text-decoration: none;
+}
+
+.btn-primary { background: var(--primary); color: #000; }
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,242,255,0.4); }
+
+.btn-success { background: #00ff88; color: #000; }
+
+/* 7. Detection Alert */
+#detection-alert {
+    position: absolute;
+    top: 20px;
+    right: 20px;
+    background: rgba(255, 0, 85, 0.8);
+    padding: 10px 20px;
+    border-radius: 4px;
+    font-weight: bold;
+    animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+    100% { transform: scale(1); }
+}

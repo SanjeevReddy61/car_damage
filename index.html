@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Car Scanner | Advanced Damage Detection</title>
+    
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.9/dist/tf-tflite.min.js"></script>
+</head>
+<body>
+
+    <div class="app-shell">
+        <aside class="sidebar">
+            <div class="logo">
+                <i class="fas fa-microchip"></i>
+                <span>AUTO-AI</span>
+            </div>
+            <nav>
+                <button class="nav-item active"><i class="fas fa-camera"></i> Live Scan</button>
+                <button class="nav-item"><i class="fas fa-history"></i> History</button>
+                <button class="nav-item"><i class="fas fa-cog"></i> Settings</button>
+            </nav>
+        </aside>
+
+        <main class="main-content">
+            <header class="top-bar">
+                <div class="ai-status">
+                    <div id="status-indicator" class="status-offline"></div>
+                    <span id="status">INITIALIZING ENGINE...</span>
+                </div>
+                <div class="user-profile">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+            </header>
+
+            <section class="viewport-section">
+                <div class="canvas-container">
+                    <video id="webcam" muted playsinline style="display:none"></video>
+                    
+                    <canvas id="overlay"></canvas>
+                    
+                    <div class="scan-grid"></div>
+                    <div id="detection-alert" class="hidden">⚠️ DAMAGE DETECTED</div>
+                </div>
+            </section>
+
+            <footer class="action-bar">
+                <div class="input-group">
+                    <label for="uploadVideo" class="btn-primary">
+                        <i class="fas fa-file-upload"></i> Upload Footage
+                    </label>
+                    <input type="file" id="uploadVideo" accept="video/*" style="display:none">
+                </div>
+
+                <button id="webcamToggle" class="btn-secondary">
+                    <i class="fas fa-sync"></i> Reset Stream
+                </button>
+
+                <div id="download-zone">
+                    <a id="downloadBtn" class="btn-success" style="display:none;">
+                        <i class="fas fa-download"></i> EXPORT REPORT
+                    </a>
+                </div>
+            </footer>
+        </main>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
