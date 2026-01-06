@@ -2,73 +2,101 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Car Scanner | Advanced Damage Detection</title>
-    
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>AUTO-AI | Pro Vehicle Inspection</title>
+
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs-tflite@0.0.1-alpha.9/dist/tf-tflite.min.js"></script>
 </head>
+
 <body>
+<div class="app-shell">
 
-    <div class="app-shell">
-        <aside class="sidebar">
-            <div class="logo">
-                <i class="fas fa-microchip"></i>
-                <span>AUTO-AI</span>
+    <aside class="sidebar">
+        <div class="logo"><i class="fas fa-microchip"></i></div>
+    </aside>
+
+    <main class="main-content">
+        <header class="top-bar">
+            <span id="status">INITIALIZING SYSTEM...</span>
+        </header>
+
+        <section class="dashboard-grid">
+            <div class="viewport-section" id="viewport">
+                <video id="webcam" muted playsinline hidden></video>
+                <canvas id="overlay"></canvas>
+                <div id="detection-alert" class="hidden">⚠ DAMAGE DETECTED</div>
             </div>
-            <nav>
-                <button class="nav-item active"><i class="fas fa-camera"></i> Live Scan</button>
-                <button class="nav-item"><i class="fas fa-history"></i> History</button>
-                <button class="nav-item"><i class="fas fa-cog"></i> Settings</button>
-            </nav>
-        </aside>
 
-        <main class="main-content">
-            <header class="top-bar">
-                <div class="ai-status">
-                    <div id="status-indicator" class="status-offline"></div>
-                    <span id="status">INITIALIZING ENGINE...</span>
+            <div class="map-section">
+                <h3><i class="fas fa-car-crash"></i> Exterior Condition Map</h3>
+                <div class="blueprint-wrapper">
+                    <svg id="car-map" viewBox="0 0 1200 600">
+                        <path id="rear-bumper" class="car-part" d="M350,0 H850 V40 H350 Z"/>
+                        <text id="label-rear-bumper" class="part-label" x="600" y="25">Rear Bumper</text>
+
+                        <path id="trunk" class="car-part" d="M420,40 H780 V160 H420 Z"/>
+                        <text id="label-trunk" class="part-label" x="600" y="110">Trunk</text>
+
+                        <path id="roof" class="car-part" d="M420,160 H780 V350 H420 Z"/>
+                        <text id="label-roof" class="part-label" x="600" y="265">Roof</text>
+
+                        <path id="rear-left-door" class="car-part" d="M300,200 H420 V350 H300 Z"/>
+                        <text id="label-rear-left-door" class="part-label" x="360" y="280">Rear Left Door</text>
+
+                        <path id="rear-right-door" class="car-part" d="M780,200 H900 V350 H780 Z"/>
+                        <text id="label-rear-right-door" class="part-label" x="840" y="280">Rear Right Door</text>
+
+                        <path id="front-left-door" class="car-part" d="M300,350 H420 V500 H300 Z"/>
+                        <text id="label-front-left-door" class="part-label" x="360" y="435">Front Left Door</text>
+
+                        <path id="front-right-door" class="car-part" d="M780,350 H900 V500 H780 Z"/>
+                        <text id="label-front-right-door" class="part-label" x="840" y="435">Front Right Door</text>
+
+                        <path id="hood" class="car-part" d="M350,350 H850 V460 H350 Z"/>
+                        <text id="label-hood" class="part-label" x="600" y="410">Hood</text>
+
+                        <path id="left-headlight" class="car-part" d="M240,460 H330 V500 H240 Z"/>
+                        <text id="label-left-headlight" class="part-label" x="285" y="485">L-Headlight</text>
+
+                        <path id="right-headlight" class="car-part" d="M870,460 H960 V500 H870 Z"/>
+                        <text id="label-right-headlight" class="part-label" x="915" y="485">R-Headlight</text>
+
+                        <path id="front-bumper" class="car-part" d="M200,480 H1000 V540 H200 Z"/>
+                        <text id="label-front-bumper" class="part-label" x="600" y="515">Front Bumper</text>
+                    </svg>
                 </div>
-                <div class="user-profile">
-                    <i class="fas fa-user-circle"></i>
-                </div>
-            </header>
+                <div id="damage-summary" class="summary-box">Status: System Standby</div>
+            </div>
+        </section>
 
-            <section class="viewport-section">
-                <div class="canvas-container">
-                    <video id="webcam" muted playsinline style="display:none"></video>
-                    
-                    <canvas id="overlay"></canvas>
-                    
-                    <div class="scan-grid"></div>
-                    <div id="detection-alert" class="hidden">⚠️ DAMAGE DETECTED</div>
-                </div>
-            </section>
+        <footer class="action-bar">
+            <label for="uploadVideo" class="btn-secondary">
+                <i class="fas fa-upload"></i> Upload
+            </label>
+            <input type="file" id="uploadVideo" accept="video/*" hidden>
 
-            <footer class="action-bar">
-                <div class="input-group">
-                    <label for="uploadVideo" class="btn-primary">
-                        <i class="fas fa-file-upload"></i> Upload Footage
-                    </label>
-                    <input type="file" id="uploadVideo" accept="video/*" style="display:none">
-                </div>
+            <button id="switchBtn" class="btn-secondary" onclick="switchCamera()">
+                <i class="fas fa-camera-rotate"></i>
+            </button>
 
-                <button id="webcamToggle" class="btn-secondary">
-                    <i class="fas fa-sync"></i> Reset Stream
-                </button>
+            <button id="scanBtn" class="btn-primary" onclick="toggleScan()">
+                <i class="fas fa-play"></i> START SCANNING
+            </button>
 
-                <div id="download-zone">
-                    <a id="downloadBtn" class="btn-success" style="display:none;">
-                        <i class="fas fa-download"></i> EXPORT REPORT
-                    </a>
-                </div>
-            </footer>
-        </main>
-    </div>
-
-    <script src="script.js"></script>
+            <button class="btn-secondary" onclick="location.reload()">
+                <i class="fas fa-sync"></i>
+            </button>
+            
+            <a id="downloadBtn" class="btn-secondary" style="display:none;">
+                <i class="fas fa-download"></i>
+            </a>
+        </footer>
+    </main>
+</div>
+<script src="script.js"></script>
 </body>
 </html>

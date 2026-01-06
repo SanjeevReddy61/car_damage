@@ -1,149 +1,173 @@
 let model;
-let mediaRecorder;
-let recordedChunks = [];
+let mediaRecorder, recordedChunks = [];
+let isScanning = false;
+let currentFacingMode = 'environment'; // Start with back camera
+
 const video = document.getElementById('webcam');
 const canvas = document.getElementById('overlay');
 const ctx = canvas.getContext('2d');
 const status = document.getElementById('status');
 const uploadInput = document.getElementById('uploadVideo');
 const downloadBtn = document.getElementById('downloadBtn');
+const alertBox = document.getElementById('detection-alert');
+const scanBtn = document.getElementById('scanBtn');
 
-// 1. Initialize AI Model
 async function init() {
     try {
-        // Load the TFLite model from your local path
+        // Force WebGL for mobile hardware acceleration
+        await tf.setBackend('webgl'); 
+        await tf.ready();
+        
         model = await tflite.loadTFLiteModel('./models/best_float32.tflite');
-        status.innerText = "AI Ready! Select Video or Start Camera.";
+        status.innerText = "AI ENGINE ACTIVE (GPU)";
         setupWebcam();
     } catch (err) {
-        console.error("Model failed to load:", err);
-        status.innerText = "Error loading AI Engine.";
+        console.error(err);
+        status.innerText = "ENGINE ERROR";
     }
 }
 
-// 2. Setup Webcam (Default)
 async function setupWebcam() {
-    const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-        audio: false
-    });
-    video.srcObject = stream;
-    video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        video.play();
-        processLoop();
-    };
+    if (video.srcObject) {
+        video.srcObject.getTracks().forEach(t => t.stop());
+    }
+
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+            video: { 
+                width: { ideal: 640 }, 
+                height: { ideal: 480 },
+                facingMode: currentFacingMode 
+            },
+            audio: false
+        });
+        video.srcObject = stream;
+        sync();
+    } catch (err) {
+        console.error(err);
+        status.innerText = "UPLOAD VIDEO";
+    }
 }
 
-// 3. Handle Video Upload
+function switchCamera() {
+    currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
+    setupWebcam();
+}
+
+function toggleScan() {
+    isScanning = !isScanning;
+    if (isScanning) {
+        scanBtn.innerHTML = '<i class="fas fa-stop"></i> STOP SCANNING';
+        scanBtn.classList.add('btn-active');
+    } else {
+        scanBtn.innerHTML = '<i class="fas fa-play"></i> START SCANNING';
+        scanBtn.classList.remove('btn-active');
+        clearBlueprint();
+        alertBox.classList.add('hidden');
+    }
+}
+
 uploadInput.onchange = (e) => {
     const file = e.target.files[0];
     if (!file) return;
-
-    // Stop webcam if it's running
     if (video.srcObject) {
-        video.srcObject.getTracks().forEach(track => track.stop());
+        video.srcObject.getTracks().forEach(t => t.stop());
         video.srcObject = null;
     }
-
     video.src = URL.createObjectURL(file);
+    sync();
+    startRecording();
+};
+
+function sync() {
     video.onloadedmetadata = () => {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
-        
-        startRecording(); // Start capturing the canvas
         video.play();
-        processLoop();
+        process();
     };
-};
-
-// 4. Recording Logic
-function startRecording() {
-    recordedChunks = [];
-    
-    // 1. Define the MP4 options
-    const options = {
-        mimeType: 'video/mp4; codecs="avc1.424028, mp4a.40.2"', // Standard MP4 codec
-        videoBitsPerSecond: 2500000 // 2.5 Mbps for clear quality
-    };
-
-    // 2. Check if the browser supports this specific MP4 type
-    if (!MediaRecorder.isTypeSupported(options.mimeType)) {
-        console.warn("Direct MP4 not supported, falling back to WebM");
-        options.mimeType = 'video/webm'; 
-    }
-
-    const stream = canvas.captureStream(30);
-    mediaRecorder = new MediaRecorder(stream, options);
-
-    mediaRecorder.ondataavailable = (e) => {
-        if (e.data.size > 0) recordedChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = () => {
-        // 3. Create the Blob as an MP4
-        const blob = new Blob(recordedChunks, { type: options.mimeType });
-        const url = URL.createObjectURL(blob);
-        
-        downloadBtn.href = url;
-        // Ensure the extension is .mp4
-        downloadBtn.download = `Damage_Report_${Date.now()}.mp4`; 
-        downloadBtn.style.display = 'inline-block';
-    };
-
-    mediaRecorder.start();
 }
 
-// 5. Unified AI Processing Loop
-async function processLoop() {
+function clearBlueprint() {
+    document.querySelectorAll('.car-part').forEach(p => p.classList.remove('damage-detected'));
+}
+
+function updateMap(xNorm) {
+    clearBlueprint();
+    let parts = [];
+    if (xNorm < 0.33) {
+        parts = ['hood', 'front-bumper', 'left-headlight', 'right-headlight'];
+    } else if (xNorm < 0.66) {
+        parts = ['roof', 'front-left-door', 'front-right-door', 'rear-left-door', 'rear-right-door'];
+    } else {
+        parts = ['trunk', 'rear-bumper'];
+    }
+
+    parts.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add('damage-detected');
+    });
+
+    document.getElementById('damage-summary').innerHTML = 
+        `<p style="color:#ff0055;font-weight:bold">ALERTS: ${parts.length} AREAS FLAGGED</p>`;
+}
+
+async function process() {
     if (video.paused || video.ended) {
         if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
         return;
     }
 
-    // Start memory scope
-    tf.engine().startScope();
-
-    // Pre-processing
-    const img = tf.browser.fromPixels(video);
-    const resized = tf.image.resizeBilinear(img, [640, 640]);
-    const expanded = resized.expandDims(0);
-    const normalized = expanded.div(255.0); // Normalization
-
-    // Run Inference
-    const result = await model.predict(normalized);
-    const data = result.dataSync();
-
-    // Draw frame to canvas
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-    
-    // Draw AI boxes (YOLO11 structure)
-    drawBoxes(data);
 
-    tf.engine().endScope();
-    requestAnimationFrame(processLoop);
-}
+    const input = tf.browser
+        .fromPixels(video)
+        .resizeBilinear([640, 640])
+        .div(255.0)
+        .expandDims(0);
 
-function drawBoxes(data) {
-    const numDets = 8400; 
+    const output = await model.predict(input);
+    const data = output.dataSync();
+
     let found = false;
+    const NUM = 8400;
 
-    for (let i = 0; i < numDets; i++) {
-        let score = data[i + numDets * 4]; 
-        if (score > 0.45) {
-            found = true;
-            let x_c = data[i] * canvas.width;
-            let y_c = data[i + numDets] * canvas.height;
-            let w = data[i + numDets * 2] * canvas.width;
-            let h = data[i + numDets * 3] * canvas.height;
+    for (let i = 0; i < NUM; i++) {
+        const conf = data[i + NUM * 4];
+        if (conf > 0.25) { 
+            const x = data[i] * canvas.width;
+            const y = data[i + NUM] * canvas.height;
+            const w = data[i + NUM * 2] * canvas.width;
+            const h = data[i + NUM * 3] * canvas.height;
 
-            ctx.strokeStyle = "#FF0000";
-            ctx.lineWidth = 3;
-            ctx.strokeRect(x_c - w/2, y_c - h/2, w, h);
+            ctx.strokeStyle = "#ff0055";
+            ctx.lineWidth = 6;
+            ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+
+            if (isScanning) {
+                found = true;
+                updateMap(data[i]);
+            }
+            break; 
         }
     }
-    status.innerText = found ? "⚠️ DAMAGE DETECTED" : "Scanning...";
+
+    alertBox.classList.toggle('hidden', !found);
+    tf.dispose([input, output]);
+    requestAnimationFrame(process);
+}
+
+function startRecording() {
+    recordedChunks = [];
+    mediaRecorder = new MediaRecorder(canvas.captureStream(30), { mimeType: 'video/webm' });
+    mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
+    mediaRecorder.onstop = () => {
+        const url = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/webm' }));
+        downloadBtn.href = url;
+        downloadBtn.download = `Report_${Date.now()}.webm`;
+        downloadBtn.style.display = "inline-flex";
+    };
+    mediaRecorder.start();
 }
 
 init();
