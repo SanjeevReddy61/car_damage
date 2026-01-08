@@ -1,173 +1,293 @@
-let model;
-let mediaRecorder, recordedChunks = [];
-let isScanning = false;
-let currentFacingMode = 'environment'; // Start with back camera
+/*************************************************
+ * CONFIG
+ *************************************************/
+const INPUT_SIZE = 640;
+const CAR_CONF = 0.45;
+const DAMAGE_CONF = 0.45;
+const MIN_DAMAGE_AREA = 0.002;
 
-const video = document.getElementById('webcam');
-const canvas = document.getElementById('overlay');
-const ctx = canvas.getContext('2d');
-const status = document.getElementById('status');
-const uploadInput = document.getElementById('uploadVideo');
-const downloadBtn = document.getElementById('downloadBtn');
-const alertBox = document.getElementById('detection-alert');
-const scanBtn = document.getElementById('scanBtn');
+let carModel, damageModel;
+let running = false;
 
-async function init() {
-    try {
-        // Force WebGL for mobile hardware acceleration
-        await tf.setBackend('webgl'); 
-        await tf.ready();
-        
-        model = await tflite.loadTFLiteModel('./models/best_float32.tflite');
-        status.innerText = "AI ENGINE ACTIVE (GPU)";
-        setupWebcam();
-    } catch (err) {
-        console.error(err);
-        status.innerText = "ENGINE ERROR";
-    }
+/*************************************************
+ * DOM
+ *************************************************/
+const video = document.getElementById("webcam");
+const canvas = document.getElementById("overlay");
+const ctx = canvas.getContext("2d");
+const status = document.getElementById("status");
+const uploadInput = document.getElementById("uploadVideo");
+const alertBox = document.getElementById("detection-alert");
+
+/*************************************************
+ * BLUEPRINT (FIXED & COMPLETE)
+ *************************************************/
+function resetBlueprint() {
+    document
+        .querySelectorAll(".car-part")
+        .forEach(p => p.classList.remove("damage-detected"));
 }
 
-async function setupWebcam() {
-    if (video.srcObject) {
-        video.srcObject.getTracks().forEach(t => t.stop());
+function mark(...ids) {
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.classList.add("damage-detected");
+    });
+}
+
+/**
+ * xNorm, yNorm are normalized (0–1)
+ * relative to the detected CAR
+ */
+function updateBlueprint(xNorm, yNorm) {
+    resetBlueprint();
+
+    // ---------- REAR ----------
+    if (yNorm < 0.2) {
+        mark("rear-bumper");
     }
 
+    // ---------- TRUNK ----------
+    else if (yNorm < 0.35) {
+        mark("trunk");
+    }
+
+    // ---------- REAR DOORS ----------
+    else if (yNorm < 0.5) {
+        if (xNorm < 0.5) {
+            mark("rear-left-door");
+        } else {
+            mark("rear-right-door");
+        }
+    }
+
+    // ---------- ROOF ----------
+    else if (yNorm < 0.65) {
+        mark("roof");
+    }
+
+    // ---------- FRONT DOORS ----------
+    else if (yNorm < 0.8) {
+        if (xNorm < 0.5) {
+            mark("front-left-door");
+        } else {
+            mark("front-right-door");
+        }
+    }
+
+    // ---------- HOOD ----------
+    else if (yNorm < 0.9) {
+        mark("hood");
+    }
+
+    // ---------- FRONT BUMPER ----------
+    else {
+        mark("front-bumper");
+    }
+
+    const count = document.querySelectorAll(".damage-detected").length;
+    document.getElementById("damage-summary").innerHTML =
+        `<p style="color:#ff0055;font-weight:bold">
+            ALERTS: ${count} PANELS IMPACTED
+        </p>`;
+}
+
+/*************************************************
+ * INIT
+ *************************************************/
+async function init() {
+    status.innerText = "LOADING MODELS...";
+    carModel = await tflite.loadTFLiteModel("./models/car_float32.tflite");
+    damageModel = await tflite.loadTFLiteModel("./models/best1_float32.tflite");
+    status.innerText = "AI ENGINE ACTIVE (2-STAGE YOLOv11)";
+    setupCamera();
+}
+
+/*************************************************
+ * CAMERA (DESKTOP + MOBILE)
+ *************************************************/
+async function setupCamera() {
     try {
         const stream = await navigator.mediaDevices.getUserMedia({
-            video: { 
-                width: { ideal: 640 }, 
-                height: { ideal: 480 },
-                facingMode: currentFacingMode 
-            },
+            video: { facingMode: { ideal: "environment" } },
             audio: false
         });
+
         video.srcObject = stream;
-        sync();
-    } catch (err) {
-        console.error(err);
+        video.onloadedmetadata = () => {
+            video.play();
+            resizeCanvas();
+            running = true;
+            detectLoop();
+        };
+    } catch {
         status.innerText = "UPLOAD VIDEO";
     }
 }
 
-function switchCamera() {
-    currentFacingMode = (currentFacingMode === 'user') ? 'environment' : 'user';
-    setupWebcam();
-}
-
-function toggleScan() {
-    isScanning = !isScanning;
-    if (isScanning) {
-        scanBtn.innerHTML = '<i class="fas fa-stop"></i> STOP SCANNING';
-        scanBtn.classList.add('btn-active');
-    } else {
-        scanBtn.innerHTML = '<i class="fas fa-play"></i> START SCANNING';
-        scanBtn.classList.remove('btn-active');
-        clearBlueprint();
-        alertBox.classList.add('hidden');
-    }
-}
-
-uploadInput.onchange = (e) => {
+/*************************************************
+ * VIDEO UPLOAD
+ *************************************************/
+uploadInput.onchange = e => {
     const file = e.target.files[0];
     if (!file) return;
+
     if (video.srcObject) {
         video.srcObject.getTracks().forEach(t => t.stop());
         video.srcObject = null;
     }
+
     video.src = URL.createObjectURL(file);
-    sync();
-    startRecording();
+    video.onloadedmetadata = () => {
+        video.play();
+        resizeCanvas();
+        running = true;
+        detectLoop();
+    };
 };
 
-function sync() {
-    video.onloadedmetadata = () => {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        video.play();
-        process();
-    };
+function resizeCanvas() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
 }
 
-function clearBlueprint() {
-    document.querySelectorAll('.car-part').forEach(p => p.classList.remove('damage-detected'));
-}
-
-function updateMap(xNorm) {
-    clearBlueprint();
-    let parts = [];
-    if (xNorm < 0.33) {
-        parts = ['hood', 'front-bumper', 'left-headlight', 'right-headlight'];
-    } else if (xNorm < 0.66) {
-        parts = ['roof', 'front-left-door', 'front-right-door', 'rear-left-door', 'rear-right-door'];
-    } else {
-        parts = ['trunk', 'rear-bumper'];
-    }
-
-    parts.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) el.classList.add('damage-detected');
-    });
-
-    document.getElementById('damage-summary').innerHTML = 
-        `<p style="color:#ff0055;font-weight:bold">ALERTS: ${parts.length} AREAS FLAGGED</p>`;
-}
-
-async function process() {
-    if (video.paused || video.ended) {
-        if (mediaRecorder && mediaRecorder.state === "recording") mediaRecorder.stop();
-        return;
-    }
+/*************************************************
+ * MAIN LOOP
+ *************************************************/
+async function detectLoop() {
+    if (!running || video.paused || video.ended) return;
 
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-    const input = tf.browser
-        .fromPixels(video)
-        .resizeBilinear([640, 640])
-        .div(255.0)
-        .expandDims(0);
+    const frame = tf.tidy(() =>
+        tf.browser.fromPixels(video)
+            .resizeBilinear([INPUT_SIZE, INPUT_SIZE])
+            .div(255)
+            .expandDims(0)
+    );
 
-    const output = await model.predict(input);
-    const data = output.dataSync();
+    // ---------- CAR DETECTION ----------
+    const carOut = await carModel.predict(frame);
+    const carData = carOut.dataSync();
+    tf.dispose(carOut);
 
-    let found = false;
-    const NUM = 8400;
+    const carBox = findBestCar(carData);
 
-    for (let i = 0; i < NUM; i++) {
-        const conf = data[i + NUM * 4];
-        if (conf > 0.25) { 
-            const x = data[i] * canvas.width;
-            const y = data[i + NUM] * canvas.height;
-            const w = data[i + NUM * 2] * canvas.width;
-            const h = data[i + NUM * 3] * canvas.height;
+    if (carBox) {
+        drawBox(carBox, "#00f2ff");
 
-            ctx.strokeStyle = "#ff0055";
-            ctx.lineWidth = 6;
-            ctx.strokeRect(x - w / 2, y - h / 2, w, h);
+        // ---------- DAMAGE DETECTION ----------
+        const crop = cropCar(frame, carBox);
+        const dmgOut = await damageModel.predict(crop);
+        const dmgData = dmgOut.dataSync();
+        tf.dispose([crop, dmgOut]);
 
-            if (isScanning) {
-                found = true;
-                updateMap(data[i]);
-            }
-            break; 
-        }
+        const damaged = processDamage(dmgData, carBox);
+        alertBox.classList.toggle("hidden", !damaged);
+    } else {
+        alertBox.classList.add("hidden");
+        resetBlueprint();
     }
 
-    alertBox.classList.toggle('hidden', !found);
-    tf.dispose([input, output]);
-    requestAnimationFrame(process);
+    tf.dispose(frame);
+    requestAnimationFrame(detectLoop);
 }
 
-function startRecording() {
-    recordedChunks = [];
-    mediaRecorder = new MediaRecorder(canvas.captureStream(30), { mimeType: 'video/webm' });
-    mediaRecorder.ondataavailable = e => recordedChunks.push(e.data);
-    mediaRecorder.onstop = () => {
-        const url = URL.createObjectURL(new Blob(recordedChunks, { type: 'video/webm' }));
-        downloadBtn.href = url;
-        downloadBtn.download = `Report_${Date.now()}.webm`;
-        downloadBtn.style.display = "inline-flex";
-    };
-    mediaRecorder.start();
+/*************************************************
+ * CAR DETECTION (ALL CLASSES = CAR)
+ *************************************************/
+function findBestCar(data) {
+    const N = 8400;
+    const attrs = data.length / N;
+
+    let best = null;
+    let bestScore = 0;
+
+    for (let i = 0; i < N; i++) {
+        let maxCls = 0;
+        for (let c = 4; c < attrs; c++) {
+            maxCls = Math.max(maxCls, data[i + N * c]);
+        }
+
+        if (maxCls > CAR_CONF && maxCls > bestScore) {
+            bestScore = maxCls;
+            best = {
+                x: data[i],
+                y: data[i + N],
+                w: data[i + N * 2],
+                h: data[i + N * 3]
+            };
+        }
+    }
+    return best;
 }
 
+/*************************************************
+ * DAMAGE DETECTION (INSIDE CAR ONLY)
+ *************************************************/
+function processDamage(data, car) {
+    const N = 8400;
+    const attrs = data.length / N;
+    let detected = false;
+
+    for (let i = 0; i < N; i++) {
+        let maxCls = 0;
+        for (let c = 4; c < attrs; c++) {
+            maxCls = Math.max(maxCls, data[i + N * c]);
+        }
+
+        if (maxCls < DAMAGE_CONF) continue;
+
+        const w = data[i + N * 2];
+        const h = data[i + N * 3];
+        if (w * h < MIN_DAMAGE_AREA) continue;
+
+        detected = true;
+
+        const x = car.x + (data[i] - 0.5) * car.w;
+        const y = car.y + (data[i + N] - 0.5) * car.h;
+
+        drawBox(
+            { x, y, w: w * car.w, h: h * car.h },
+            "#ff0055"
+        );
+
+        // ✅ FIXED: pass BOTH x & y
+        updateBlueprint(x, y);
+        break;
+    }
+    return detected;
+}
+
+/*************************************************
+ * HELPERS
+ *************************************************/
+function cropCar(frame, car) {
+    return tf.image.cropAndResize(
+        frame,
+        [[
+            car.y - car.h / 2,
+            car.x - car.w / 2,
+            car.y + car.h / 2,
+            car.x + car.w / 2
+        ]],
+        [0],
+        [INPUT_SIZE, INPUT_SIZE]
+    );
+}
+
+function drawBox(b, color) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 4;
+    ctx.strokeRect(
+        (b.x - b.w / 2) * canvas.width,
+        (b.y - b.h / 2) * canvas.height,
+        b.w * canvas.width,
+        b.h * canvas.height
+    );
+}
+
+/*************************************************
+ * START
+ *************************************************/
 init();
