@@ -2,10 +2,12 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>AUTO-AI | Pro Vehicle Inspection</title>
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <link rel="stylesheet"
+          href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs"></script>
@@ -15,88 +17,111 @@
 <body>
 <div class="app-shell">
 
+    <!-- SIDEBAR -->
     <aside class="sidebar">
         <div class="logo"><i class="fas fa-microchip"></i></div>
     </aside>
 
+    <!-- MAIN -->
     <main class="main-content">
+
+        <!-- STATUS BAR -->
         <header class="top-bar">
             <span id="status">INITIALIZING SYSTEM...</span>
         </header>
 
+        <!-- DASHBOARD -->
         <section class="dashboard-grid">
+
+            <!-- CAMERA VIEW -->
             <div class="viewport-section" id="viewport">
                 <video id="webcam" muted playsinline hidden></video>
                 <canvas id="overlay"></canvas>
                 <div id="detection-alert" class="hidden">⚠ DAMAGE DETECTED</div>
             </div>
 
+            <!-- BLUEPRINT -->
             <div class="map-section">
                 <h3><i class="fas fa-car-crash"></i> Exterior Condition Map</h3>
+
                 <div class="blueprint-wrapper">
                     <svg id="car-map" viewBox="0 0 1200 600">
+
+                        <!-- REAR -->
                         <path id="rear-bumper" class="car-part" d="M350,0 H850 V40 H350 Z"/>
-                        <text id="label-rear-bumper" class="part-label" x="600" y="25">Rear Bumper</text>
+                        <text class="part-label" x="600" y="25">Rear Bumper</text>
 
                         <path id="trunk" class="car-part" d="M420,40 H780 V160 H420 Z"/>
-                        <text id="label-trunk" class="part-label" x="600" y="110">Trunk</text>
+                        <text class="part-label" x="600" y="110">Trunk</text>
 
+                        <!-- ROOF -->
                         <path id="roof" class="car-part" d="M420,160 H780 V350 H420 Z"/>
-                        <text id="label-roof" class="part-label" x="600" y="265">Roof</text>
+                        <text class="part-label" x="600" y="265">Roof</text>
 
+                        <!-- DOORS -->
                         <path id="rear-left-door" class="car-part" d="M300,200 H420 V350 H300 Z"/>
-                        <text id="label-rear-left-door" class="part-label" x="360" y="280">Rear Left Door</text>
+                        <text class="part-label" x="360" y="280">Rear Left Door</text>
 
                         <path id="rear-right-door" class="car-part" d="M780,200 H900 V350 H780 Z"/>
-                        <text id="label-rear-right-door" class="part-label" x="840" y="280">Rear Right Door</text>
+                        <text class="part-label" x="840" y="280">Rear Right Door</text>
 
                         <path id="front-left-door" class="car-part" d="M300,350 H420 V500 H300 Z"/>
-                        <text id="label-front-left-door" class="part-label" x="360" y="435">Front Left Door</text>
+                        <text class="part-label" x="360" y="435">Front Left Door</text>
 
                         <path id="front-right-door" class="car-part" d="M780,350 H900 V500 H780 Z"/>
-                        <text id="label-front-right-door" class="part-label" x="840" y="435">Front Right Door</text>
+                        <text class="part-label" x="840" y="435">Front Right Door</text>
 
+                        <!-- FRONT -->
                         <path id="hood" class="car-part" d="M350,350 H850 V460 H350 Z"/>
-                        <text id="label-hood" class="part-label" x="600" y="410">Hood</text>
+                        <text class="part-label" x="600" y="410">Hood</text>
 
                         <path id="left-headlight" class="car-part" d="M240,460 H330 V500 H240 Z"/>
-                        <text id="label-left-headlight" class="part-label" x="285" y="485">L-Headlight</text>
+                        <text class="part-label" x="285" y="485">L Headlight</text>
 
                         <path id="right-headlight" class="car-part" d="M870,460 H960 V500 H870 Z"/>
-                        <text id="label-right-headlight" class="part-label" x="915" y="485">R-Headlight</text>
+                        <text class="part-label" x="915" y="485">R Headlight</text>
 
                         <path id="front-bumper" class="car-part" d="M200,480 H1000 V540 H200 Z"/>
-                        <text id="label-front-bumper" class="part-label" x="600" y="515">Front Bumper</text>
+                        <text class="part-label" x="600" y="515">Front Bumper</text>
                     </svg>
                 </div>
-                <div id="damage-summary" class="summary-box">Status: System Standby</div>
+
+                <div id="damage-summary" class="summary-box">
+                    Status: System Standby
+                </div>
             </div>
         </section>
 
+        <!-- ACTION BAR -->
         <footer class="action-bar">
+
+            <!-- UPLOAD -->
             <label for="uploadVideo" class="btn-secondary">
-                <i class="fas fa-upload"></i> Upload
+                <i class="fas fa-upload"></i>
             </label>
             <input type="file" id="uploadVideo" accept="video/*" hidden>
 
+            <!-- SWITCH CAMERA -->
             <button id="switchBtn" class="btn-secondary" onclick="switchCamera()">
                 <i class="fas fa-camera-rotate"></i>
             </button>
 
-            <button id="scanBtn" class="btn-primary" onclick="toggleScan()">
-                <i class="fas fa-play"></i> START SCANNING
-            </button>
-
+            <!-- RESET -->
             <button class="btn-secondary" onclick="location.reload()">
                 <i class="fas fa-sync"></i>
             </button>
-            
-            <a id="downloadBtn" class="btn-secondary" style="display:none;">
+
+            <!-- DOWNLOAD (DISABLED BY DEFAULT) -->
+            <a id="downloadBtn"
+               class="btn-secondary"
+               style="opacity:0.4; pointer-events:none;">
                 <i class="fas fa-download"></i>
             </a>
         </footer>
+
     </main>
 </div>
+
 <script src="script.js"></script>
 </body>
 </html>
